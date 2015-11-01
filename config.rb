@@ -1,5 +1,4 @@
 require "extensions/views"
-require "lib/models/catalog"
 
 activate :views
 activate :directory_indexes
