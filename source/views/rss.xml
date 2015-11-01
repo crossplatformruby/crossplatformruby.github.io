@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title><![CDATA[Cross Platform Ruby]]></title><description><![CDATA[Everything about writing portable Ruby code.]]></description><link>http://blog.crossplatformruby.com/</link><generator>Ghost v0.4.2</generator><lastBuildDate>Sun, 01 Nov 2015 16:55:44 GMT</lastBuildDate><atom:link href="http://blog.crossplatformruby.com/rss/" rel="self" type="application/rss+xml"/><ttl>60</ttl><item><title><![CDATA[Universal Ruby Gems in 20 Lines of Code]]></title><description><![CDATA[<p>Ruby Gems are essential building blocks of Cross Platform Ruby applications. We will use them to encapsulate domain logic of our apps and extract common functionalities that can be reused on different platforms.</p>
+
+<p>Today I'm going to show you how to prepare a Ruby Gem that will work in MRI, Opal.rb and RubyMotion without any modifications. This way you can reuse it in your Rails/iOS/OSX/Android/Browser Client-Side applications.</p>
+
+<p>We need a simple gem with simple enough functionality...</p>
+
+<h3 id="enterthepig_latin">Enter the pig_latin</h3>
+
+<p>The pig_latin gem is a simple (and a bit silly) translation utility that will convert english words and phrases into their <a href='http://en.wikipedia.org/wiki/Pig_Latin' >pig latin</a> equivalents.</p>
+
+<p>Example usage:</p>
+
+<pre><code class=" ruby"> &gt; PigLatin.translate("cross platform ruby")
+=&gt; "osscray atformplay ubyray" 
+</code></pre>
+
+<p>You can find pig_latin gem on <a href='https://github.com/crossplatformruby/pig_latin' >github</a> and try it yourself. </p>
+
+<p>It is a silly little gem but it gets really interesting when you add a line below to a <code>Gemfile</code> of one of your rails or RubyMotion applications.</p>
+
+<pre><code class=" Ruby">gem 'pig_latin', git: 'git@github.com:crossplatformruby/pig_latin.git'  
+</code></pre>
+
+<h3 id="itworkseverywhere">It works everywhere!</h3>
+
+<p>Regardless if you use it in Rails, RubyMotion or even command line applications it simply works out of the box. On top of that if you use Opal.rb in your Rails applications you can require and use it in your browser.</p>
+
+<h4 id="rails">Rails</h4>
+
+<pre><code class=" Ruby">class TranslationsController &lt; ApplicationController  
+  def show
+    @phrase = params[:phrase]
+    @translation = PigLatin.translate(@phrase)
+  end
+end  
+</code></pre>
+
+<p><img src='http://blog-crossplatformruby.s3.amazonaws.com/uploads/cross_platform_gems/rails.png'  alt="Pig Latin on Rails" /></p>
+
+<h4 id="opalrb">Opal.rb</h4>
+
+<pre><code class=" Ruby">require "opal"  
+require "opal_ujs"  
+require "pig_latin"
+
+puts PigLatin.translate("cross platform ruby")  
+</code></pre>
+
+<p><img src='http://blog-crossplatformruby.s3.amazonaws.com/uploads/cross_platform_gems/opal.png'  alt="Pig Latin in the browser" /></p>
+
+<h4 id="ios">iOS</h4>
+
+<pre><code class=" Ruby">class AppDelegate  
+  def application(application, didFinishLaunchingWithOptions:launchOptions)
+    alert = UIAlertView.new
+    alert.message = PigLatin.translate("cross platform ruby")
+    alert.show
+  end
+end  
+</code></pre>
+
+<p><img src='http://blog-crossplatformruby.s3.amazonaws.com/uploads/cross_platform_gems/ios.png'  alt="Pig Latin on iOS" /></p>
+
+<h4 id="osx">OSX</h4>
+
+<pre><code class=" Ruby">class AppDelegate  
+  def applicationDidFinishLaunching(notification)
+    buildMenu
+    buildWindow
+
+    alert = NSAlert.new
+    alert.messageText = PigLatin.translate("cross platform ruby")
+    alert.runModal
+  end
+
+  def buildWindow
+    # (...) details ommitted for clarity
+  end
+end  
+</code></pre>
+
+<p><img src='http://blog-crossplatformruby.s3.amazonaws.com/uploads/cross_platform_gems/osx.png'  alt="Pig Latin on iOS" /></p>
+
+<h4 id="androidsoon">Android (soon)</h4>
+
+<p>In the next few months RubyMotion will allow building Android apps in Ruby. I'll update this blog once it's ready. Although it seems that no additional setup will be required.</p>
+
+<h3 id="howdoesitwork">How does it work?</h3>
+
+<p>The most important difference between Ruby platforms when it comes to writing gems is in the way they require files. <br />
+Neither RubyMotion nor Opal.rb allow using <code>require</code> method at runtime. Therefore we need to ensure that all the files of our gem are required upfront.</p>
+
+<p>In Cross Platform Ruby the entry point file becomes a manifest for a gem.</p>
+
+<h4 id="1makeitruninruby">1. Make it run in Ruby</h4>
+
+<p>If our only platform is MRI or Rubinius then our entry point file - <code>pig_latin.rb</code> needs to look like that:</p>
+
+<pre><code class=" Ruby">require "pig_latin/version"  
+require "pig_latin/word_translator"  
+require "pig_latin/phrase_translator"  
+require "pig_latin/class_methods"  
+</code></pre>
+
+<p>We don't want any gem specific code in this file. Only sequence of requires. This will be important later.</p>
+
+<h4 id="2supportopalrb">2. Support Opal.rb</h4>
+
+<p>It is easy to make our manifest work with Opal. Just paste the following lines anywhere in <code>pig_latin.rb</code>.</p>
+
+<pre><code class=" Ruby">if defined?(Opal) &amp;&amp; defined?(File)  
+  Opal.append_path File.expand_path('.', File.dirname(__FILE__))
+end  
+</code></pre>
+
+<p>It's much harder to understand why it works.</p>
+
+<p>When Opal.rb compiles assets it translates <code>require</code> methods into <code>Sprockets</code> directives. So when we require our manifest in <code>application.rb</code> it understands all requires but doesn't know where to look for them.</p>
+
+<p>Because of that we need to give it a path to manifest file directory using <code>Opal#append_path</code>.</p>
+
+<p>It means that our manifest is actually run twice.</p>
+
+<ol>
+<li>In Ruby, while requiring gem to inform Opal about paths.  </li>
+<li>In Opal.rb to translate <code>require</code> methods into <code>Sprockets</code> directives.</li>
+</ol>
+
+<h4 id="3compileitinrubymotion">3. Compile it in RubyMotion</h4>
+
+<p>RubyMotion does not allow running <code>require</code> at runtime. We need to give it a list of files to compile instead. It would be great however to keep the requires unchanged and use it somehow to generate that list automatically.</p>
+
+<p>Because our manifest file is run in Ruby at first we can do it this using crafty little technique.</p>
+
+<p>First let's redefine <code>require</code> method.</p>
+
+<pre><code class=" Ruby">if defined?(Motion::Project::Config)  
+  def rubymotion_require(filename)
+    @files_to_require ||= []
+    @files_to_require &lt;&lt; filename
+  end
+
+  alias :old_require :require
+  alias :require :rubymotion_require
+end  
+</code></pre>
+
+<p>Then we require files as usual.</p>
+
+<p>Finally, we construct a list of files to compile and bring back the old require.</p>
+
+<pre><code class=" Ruby">if defined?(Motion::Project::Config)  
+  alias :require :old_require
+
+  Motion::Project::App.setup do |app|
+    paths_to_require = @files_to_require.map do |file|
+      File.join(File.dirname(__FILE__), file + ".rb")
+    end
+
+    app.files.unshift(*paths_to_require)
+  end
+end  
+</code></pre>
+
+<h3 id="summary">Summary</h3>
+
+<p>Using few crafty Ruby techniques and smart file organization we managed to create a gem that will work on servers, desktop apps, browsers and mobile devices.</p>
+
+<p>This opens up new possibilities to share the code among multiple applications.</p>
+
+<p>You can easily use those techniques in your own gems.</p>
+
+<p>I'll cover this process in detail and explain nuances of each technique in a future screencast.</p>
+
+<p>If you don't want to miss it make sure to sign up for the Newsletter below.</p>
+
+<hr />
+
+<div style="border: 1px dashed #0a0;">  
+<!-- Begin MailChimp Signup Form -->  
+<link href='http://cdn-images.mailchimp.com/embedcode/slim-081711.css'  rel="stylesheet" type="text/css">  
+<style type="text/css">  
+#mc_embed_signup{background:#fff; clear:left; font:14px Helvetica,Arial,sans-serif; }
+/* Add your own MailChimp form style overrides in your site stylesheet or in this style block.
+We recommend moving this block and the preceding CSS link to the HEAD of your HTML file. */  
+</style>  
+<div id="mc_embed_signup">  
+<form action="http://crossplatformruby.us2.list-manage.com/subscribe/post?u=424cb3a08158b944b14a88995&amp;id=c44149add0" method="post" id="mc-embedded-subscribe-form" name="mc-embedded-subscribe-form" class="validate" target="_blank" novalidate>  
+<label for="mce-EMAIL">Enjoyed the article?<br>Subscribe to the newsletter so you won't miss the next one.</label>  
+<input type="email" value="" name="EMAIL" class="email" id="mce-EMAIL" placeholder="email address" required>  
+    <!-- real people should not fill this in and expect good things - do not remove this or risk form bot signups-->
+<div style="position: absolute; left: -5000px;"><input type="text" name="b_424cb3a08158b944b14a88995_c44149add0" tabindex="-1" value=""></div>  
+<div class="clear"><input type="submit" value="Subscribe" name="subscribe" id="mc-embedded-subscribe" class="button"></div>  
+</form>  
+</div>  
+
+<!--End mc_embed_signup-->  
+
+<p></div></p>
+
+<hr />
+
+<!-- AddThis Smart Layers BEGIN -->  
+
+<!-- Go to http://www.addthis.com/get/smart-layers to customize -->  
+
+<script type="text/javascript" src='http://s7.addthis.com/js/300/addthis_widget.js' #pubid=ra-538fc2792a0db329"></script>  
+<script type="text/javascript">  
+  addthis.layers({
+    'theme' : 'transparent',
+    'share' : {
+      'position' : 'left',
+      'numPreferredServices' : 5
+    }, 
+    'follow' : {
+      'services' : [
+        {'service': 'facebook', 'id': 'crossplatformruby'},
+        {'service': 'twitter', 'id': 'xpruby'}
+      ]
+    },  
+    'whatsnext' : {}  
+  });
+</script>  
+
+<!-- AddThis Smart Layers END -->
+
+<!-- AddThis Welcome BEGIN -->  
+
+<script type="text/javascript" src='http://s7.addthis.com/js/300/addthis_widget.js' #pubid=ra-538fc2792a0db329"></script>  
+<script type='text/javascript'>  
+addthis.bar.initialize({'default':{  
+    "backgroundColor": "#000000",
+    "buttonColor": "#0BE032",
+    "textColor": "#FFFFFF",
+    "buttonTextColor": "#FFFFFF"
+},rules:[
+    {
+        "name": "AnyOther",
+        "message": "If you enjoy this article:",
+        "action": {
+            "type": "button",
+            "text": "Sign Up to the Newsletter",
+            "verb": "link",
+            "url": "//eepurl.com/VQAGD"
+        }
+    }
+]});
+</script>  
+
+<!-- AddThis Welcome END -->]]></description><link>http://blog.crossplatformruby.com/universal-ruby-gems-in-20-lines-of-code/</link><guid isPermaLink="false">1ea3f3c8-8320-4853-ac7f-12c998a130ac</guid><dc:creator><![CDATA[Michal Taszycki]]></dc:creator><pubDate>Sun, 01 Jun 2014 21:37:00 GMT</pubDate></item></channel></rss>
